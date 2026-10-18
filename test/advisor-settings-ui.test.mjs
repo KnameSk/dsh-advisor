@@ -13,7 +13,7 @@ import {
   validationErrors,
   valuesFrom,
 } from "../dsh/client/settings-fields.js";
-import { AdvisorPanelController } from "../dsh/client/panel-controller.js";
+import { AdvisorPanelController, remoteApi } from "../dsh/client/panel-controller.js";
 
 const CATALOG = {
   groups: [{
@@ -122,6 +122,7 @@ function createController(options = {}) {
     },
   };
   const ctx = {
+    get: (name) => (name.startsWith("remote.") ? ctx.remote?.[name.slice("remote.".length)] : undefined),
     configForms: {
       describe: () => ({
         getSnapshot: () => ({ namespaces: options.namespaces ?? [view] }),
@@ -231,4 +232,21 @@ test("the controller parses a command payload and reports a missing session", as
   missing.controller.start();
   await new Promise((resolve) => setImmediate(resolve));
   assert.match(missing.controller.getSnapshot().statusError ?? "", /No Session is available/);
+});
+
+test("a dotted Remote is looked up without throwing on an undeclared property", () => {
+  const session = { list: async () => ({}) };
+  assert.equal(remoteApi({ get: (key) => (key === "remote.session" ? session : undefined) }, "remote.session"), session);
+
+  const throwing = {
+    get() {
+      throw new Error('cannot get property "remote.session" without inject');
+    },
+    get remote() {
+      throw new Error('cannot get property "remote" without inject');
+    },
+  };
+  assert.doesNotThrow(() => remoteApi(throwing, "remote.session"));
+  assert.equal(remoteApi(throwing, "remote.session"), undefined);
+  assert.equal(remoteApi({}, "remote.session"), undefined);
 });

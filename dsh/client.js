@@ -537,6 +537,29 @@ window.__ModuleLoader__.load({
 
 
     const DEFAULT_NS = "dsh-advisor";
+
+    /**
+     * Read a Remote namespace the safe way.
+     *
+     * Cordis throws when a plugin reads a context property it did not inject, so a
+     * dotted Remote such as `remote.session` is looked up with `get()` instead;
+     * a deployment that serves no such namespace reports that through the page
+     * rather than taking the whole web boot down.
+     */
+    function remoteApi(ctx, key) {
+      try {
+        const direct = ctx.get?.(key);
+        if (direct) return direct;
+      } catch {
+        // Fall through to the namespace root below.
+      }
+      const leaf = key.slice("remote.".length);
+      try {
+        return ctx.remote?.[leaf];
+      } catch {
+        return undefined;
+      }
+    }
     class AdvisorPanelController {
       constructor(ctx) {
         this.ctx = ctx;
@@ -696,7 +719,9 @@ window.__ModuleLoader__.load({
         }
         this.set({ error: null, message: null, saving: true });
         try {
-          const response = await this.ctx.remote.settings.update(String(this.snapshot.namespace), patch, this.formRevision);
+          const settingsApi = remoteApi(this.ctx, "remote.settings");
+          if (!settingsApi?.update) throw new Error("This deployment does not expose the settings Remote, so Advisor settings cannot be saved from here.");
+          const response = await settingsApi.update(String(this.snapshot.namespace), patch, this.formRevision);
           if (response?.ok === false) throw new Error(response.error?.message ?? "The settings write was refused.");
           this.set({ dirty: false, message: "Advisor settings saved.", saving: false });
           await this.form.refresh?.();
@@ -717,7 +742,9 @@ window.__ModuleLoader__.load({
         if (this.catalogLoaded) return;
         this.catalogLoaded = true;
         try {
-          const response = await this.ctx.remote.session.modelCatalog();
+          const sessionApi = remoteApi(this.ctx, "remote.session");
+          if (!sessionApi?.modelCatalog) throw new Error("This deployment does not expose the session Remote, so the model catalog cannot be read.");
+          const response = await sessionApi.modelCatalog();
           if (response?.ok === false) throw new Error(response.error?.message ?? "The model catalog is unavailable.");
           const catalog = response?.value ?? response;
           const models = modelRows(catalog);
@@ -742,7 +769,9 @@ window.__ModuleLoader__.load({
         try {
           const sessionId = await this.currentSessionId();
           if (!sessionId) throw new Error("No Session is available for Advisor commands yet. Open a Session and retry.");
-          const response = await this.ctx.remote.commands.execute(sessionId, line);
+          const commandsApi = remoteApi(this.ctx, "remote.commands");
+          if (!commandsApi?.execute) throw new Error("This deployment does not expose the commands Remote, so Advisor status cannot be read.");
+          const response = await commandsApi.execute(sessionId, line);
           if (response?.ok === false) throw new Error(response.error?.message ?? "The command was refused.");
           const value = response?.value ?? response;
           if (value === undefined) throw new Error(`/${line.replace(/^\//u, "").split(" ")[0]} is not registered.`);
@@ -761,7 +790,9 @@ window.__ModuleLoader__.load({
       async currentSessionId() {
         if (this.sessionId) return this.sessionId;
         try {
-          const response = await this.ctx.remote.session.list({});
+          const sessionApi = remoteApi(this.ctx, "remote.session");
+          if (!sessionApi?.list) return undefined;
+          const response = await sessionApi.list({});
           const items = (response?.value ?? response)?.items ?? [];
           const chosen = items.find((item) => item.running) ?? items.find((item) => item.agentAvailable) ?? items[0];
           this.sessionId = chosen?.sessionId ?? undefined;

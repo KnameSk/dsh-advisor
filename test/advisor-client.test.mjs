@@ -89,6 +89,7 @@ function createClientContext({ form = createForm(), remote, React = createFakeRe
   };
   const context = {
     React,
+    get: (name) => (name.startsWith("remote.") ? remote?.[name.slice("remote.".length)] : undefined),
     configForms: {
       describe: () => ({
         getSnapshot: () => ({ namespaces: [form.getSnapshot()] }),
