@@ -1,6 +1,6 @@
 {
   "name": "dsh-advisor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Configurable cheap-Executor / premium-Advisor workflow plugin for DeepSeek Harness, adapted from pi-advisor, with an in-Harness Advisor Settings page and consultation budget.",
   "type": "module",
   "main": "dsh/index.js",

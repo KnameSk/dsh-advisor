@@ -104,6 +104,16 @@ The `/advisor` command family exposes the same operations to a session, and the 
 
 See [docs/dsh-advisor-settings.md](docs/dsh-advisor-settings.md) for the field-by-field reference.
 
+### Localization
+
+The Advisor Settings page is English in the plugin core; the core owns only the canonical English dictionary. Japanese copy comes from `dsh-advisor-locale-ja`, an add-on that installs independently of `dsh-advisor`:
+
+```sh
+dsh plugin --profile default add github:KnameSk/dsh-advisor-locale-ja
+```
+
+It is compatible with the general DSH Japanese pack `@fang2hou/dsh-locale-ja`: when that pack is present the add-on only contributes the Advisor dictionary and never redefines the language, and without it, it also registers the selectable `日本語` language. Japanese renders only while Japanese is the selected DSH language, and any key the add-on does not translate falls back to English. The add-on contributes copy only — it never touches Advisor configuration, remotes, or slots, so it cannot change Advisor behavior.
+
 ## Configuration
 
 The bundle inserts a `dsh-advisor` row. Configure it in the profile's `cordis.patch.yml` or in `$DSH_HOME/cordis.patch.yml` by overriding that row id. Do **not** insert a second row with the same id.

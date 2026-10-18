@@ -19,7 +19,6 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 /** Modules in dependency order; earlier modules may be referenced by later ones. */
 const MODULES = [
   "dsh/client/locale/en.js",
-  "dsh/client/locale/ja.js",
   "dsh/client/settings-fields.js",
   "dsh/client/catalog.js",
   "dsh/client/panel-controller.js",

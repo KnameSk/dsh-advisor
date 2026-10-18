@@ -69,6 +69,7 @@ test("the emitted bundle is a standalone self-registering factory", async () => 
   assert.ok(!/^\s*export\s/mu.test(source), "the served artifact carries no export statements");
   assert.match(source, /window\.__ModuleLoader__\.load\(\{/);
   assert.match(source, /id: "dsh-advisor"/);
+  assert.ok(!source.includes("予算"), "the core bundle carries no Japanese copy; dsh-advisor-locale-ja owns it");
 });
 
 test("the bundle factory resolves React from the module table and mounts the section", async () => {
@@ -91,9 +92,10 @@ test("the bundle factory resolves React from the module table and mounts the sec
   exports.apply(createContext(React, dictionaries, sections, handlers));
   assert.equal(dictionaries.length, 1);
   assert.equal(dictionaries[0].ns, "settings.advisor");
+  // The core ships the canonical English copy only; dsh-advisor-locale-ja
+  // contributes other languages against this same namespace.
+  assert.deepEqual(Object.keys(dictionaries[0].values), ["en"]);
   assert.equal(dictionaries[0].values.en["tab.budget"], "Budget");
-  assert.equal(dictionaries[0].values.ja["tab.budget"], "予算");
-  assert.equal(dictionaries[0].values.ja["field.advisorBudgetEnabled.label"], "相談予算");
   assert.ok(handlers.has("settings.section"));
   handlers.get("settings.section")();
   assert.equal(sections.length, 1);

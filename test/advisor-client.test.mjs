@@ -161,7 +161,7 @@ test("the client plugin declares the DSH settings extension points", () => {
   assert.deepEqual([...inject].sort(), ["configForms", "locale", "remote", "slots"]);
 });
 
-test("applying the client plugin registers its dictionary and one settings section", () => {
+test("applying the client plugin registers its english dictionary and one settings section", () => {
   const harness = createClientContext();
   const previous = globalThis.React;
   globalThis.React = harness.React;
@@ -172,7 +172,10 @@ test("applying the client plugin registers its dictionary and one settings secti
   }
   assert.equal(harness.dictionaries.length, 1);
   assert.equal(harness.dictionaries[0].ns, NS);
-  assert.equal(typeof harness.dictionaries[0].values.ja["tab.budget"], "string");
+  // The core owns the canonical English copy only; other languages ship as
+  // separate locale add-ons registering against this same namespace.
+  assert.deepEqual(Object.keys(harness.dictionaries[0].values), ["en"]);
+  assert.equal(typeof harness.dictionaries[0].values.en["tab.budget"], "string");
   assert.ok(harness.handlers.has("settings.section"), "the settings.section contribution is declared");
   harness.handlers.get("settings.section")();
   assert.equal(harness.sections.length, 1);

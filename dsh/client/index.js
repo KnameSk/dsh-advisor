@@ -1,9 +1,15 @@
 /** Advisor Settings browser half: one Settings navigation section. */
 import { createPanel } from "./AdvisorPanel.js";
 import { en } from "./locale/en.js";
-import { ja } from "./locale/ja.js";
 
-/** Dictionary namespace owned by this plugin. */
+/**
+ * Dictionary namespace owned by this plugin.
+ *
+ * The core owns the canonical English dictionary only. Other languages are
+ * contributed by separate locale add-ons registering against this same
+ * namespace — for Japanese, `dsh-advisor-locale-ja` — so the core neither ships
+ * nor arbitrates a translation it does not own.
+ */
 export const NS = "settings.advisor";
 
 /** Required Client services. */
@@ -24,7 +30,7 @@ export function apply(ctx) {
   const React = resolveReact();
   if (!React) throw new Error("dsh-advisor: the Harness browser module table did not provide React.");
   const t = ctx.locale.bind(NS);
-  ctx.effect(() => ctx.locale.register(NS, { en, ja }), "dsh-advisor: dictionaries");
+  ctx.effect(() => ctx.locale.register(NS, { en }), "dsh-advisor: english dictionary");
 
   // The section renders this component; the panel builds on first materialization.
   let Panel;

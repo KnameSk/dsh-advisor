@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0/).
 
+## 0.3.0 - 2026-10-18
+
+### Changed
+
+- The Advisor Settings page is English by default: the plugin core owns only the canonical English dictionary instead of bundling a second language.
+- Japanese copy now comes from `dsh-advisor-locale-ja`, a separate add-on that installs independently of `dsh-advisor` with `dsh plugin --profile <profile> add github:KnameSk/dsh-advisor-locale-ja` ([repository](https://github.com/KnameSk/dsh-advisor-locale-ja)).
+- The Japanese add-on composes with the general DSH Japanese pack `@fang2hou/dsh-locale-ja`: with that pack installed it contributes only the Advisor dictionary, and without it, it also registers the selectable `日本語` language. Japanese renders only while Japanese is the selected DSH language, untranslated keys fall back to English, and the add-on affects copy only, so it cannot change Advisor configuration, budget, or gating behavior.
+
 ## 0.2.0 - 2026-10-18
 
 Adds an in-Harness configuration and accounting surface for the DSH runtime. Everything below runs inside DeepSeek Harness through its published extension points; no external server, companion app, or separate management UI is involved.

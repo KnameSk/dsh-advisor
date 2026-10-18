@@ -17,7 +17,7 @@ companion application, or separate management UI is involved.
 | Writing values | `ctx.remote.settings.update(ns, patch, revision)` |
 | Live budget, history, connection test | `/advisor*` session commands through `ctx.remote.commands.execute()` |
 | Persistence | the plugin's `dsh-advisor` configuration entry in the profile patch |
-| Localization | `ctx.locale.register("settings.advisor", { en, ja })` |
+| Localization | `ctx.locale.register("settings.advisor", { en })`; Japanese is contributed by the separate `dsh-advisor-locale-ja` add-on |
 
 The page never invents a model id, never sends a reasoning effort the model does
 not advertise, and never modifies anything outside its own configuration entry.
