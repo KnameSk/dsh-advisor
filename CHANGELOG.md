@@ -36,6 +36,10 @@ Adds an in-Harness configuration and accounting surface for the DSH runtime. Eve
 
 - The settings entry no longer needs a hand-maintained namespace id: the page resolves the entry by id and falls back to its Advisor field, so a pinned profile still works.
 - Provider errors during a consultation are recorded in the ledger as failures and reported to the Executor without ending the session.
+- The Advisor section activates in the DSH Web client. React is resolved from the browser module table instead of `ctx`, where Cordis rejects undeclared properties.
+- Dotted Remote namespaces (`remote.session`, `remote.commands`) are read through `ctx.get`, so the model picker and the budget dashboard load.
+- The page reads the real config-form snapshot (`status`, `value`, `base`, `revision`) and persists through `form.mutate`, so Save writes the plugin entry into the profile patch.
+- The panel subscribes with `useState` + `useEffect`, and the model reference prop no longer shadows React's reserved `ref`, so the section renders instead of aborting with "Too many re-renders".
 
 ## 0.1.0 - 2026-10-18
 
