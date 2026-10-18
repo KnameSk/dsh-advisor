@@ -17,9 +17,11 @@ export const inject = ["slots", "locale", "configForms", "remote"];
  * settings store or web server is involved.
  */
 export function apply(ctx) {
-  // The module loader hands the browser module table to factories through
-  // `require`; other hosts inject React themselves.
-  const React = ctx.React ?? (typeof require === "function" ? require("react") : globalThis.React);
+  // The DSH module loader hands the browser module table to this factory as
+  // `require`; a plain host may expose React globally instead. Reading an
+  // undeclared property off the Cordis context throws, so React is never taken
+  // from `ctx`.
+  const React = resolveReact();
   if (!React) throw new Error("dsh-advisor: the Harness browser module table did not provide React.");
   const t = ctx.locale.bind(NS);
   ctx.effect(() => ctx.locale.register(NS, { en, ja }), "dsh-advisor: dictionaries");
@@ -39,4 +41,17 @@ export function apply(ctx) {
     name: "settings.section",
     order: 40,
   }, AdvisorPanel)), "dsh-advisor: settings section");
+}
+
+/** Resolve React from the module table first, then from a host-provided global. */
+function resolveReact() {
+  try {
+    if (typeof require === "function") {
+      const loaded = require("react");
+      if (loaded) return loaded;
+    }
+  } catch {
+    // A host without a usable module table falls through to the global.
+  }
+  return globalThis.React;
 }

@@ -120,7 +120,15 @@ function createClientContext({ form = createForm(), remote, React = createFakeRe
  * path the Harness takes when it mounts a `settings.section` contribution.
  */
 function renderRegistered(harness) {
-  apply(harness.context);
+  // A plain host exposes React globally; the DSH loader supplies it through the
+  // module table instead, which the emitted-bundle suite covers.
+  const previous = globalThis.React;
+  globalThis.React = harness.React;
+  try {
+    apply(harness.context);
+  } finally {
+    globalThis.React = previous;
+  }
   const register = harness.handlers.get("settings.section");
   register();
   const wrapper = harness.sections.at(-1).Component;
@@ -145,7 +153,13 @@ test("the client plugin declares the DSH settings extension points", () => {
 
 test("applying the client plugin registers its dictionary and one settings section", () => {
   const harness = createClientContext();
-  apply(harness.context);
+  const previous = globalThis.React;
+  globalThis.React = harness.React;
+  try {
+    apply(harness.context);
+  } finally {
+    globalThis.React = previous;
+  }
   assert.equal(harness.dictionaries.length, 1);
   assert.equal(harness.dictionaries[0].ns, NS);
   assert.equal(typeof harness.dictionaries[0].values.ja["tab.budget"], "string");

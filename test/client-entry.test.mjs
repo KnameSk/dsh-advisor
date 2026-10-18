@@ -59,7 +59,7 @@ async function loadBundle() {
   assert.equal(registrations.length, 1, "the bundle registers exactly one factory");
   const registration = registrations[0];
   assert.equal(registration.id, "dsh-advisor");
-  return { registration, source };
+  return { registration, sandbox, source };
 }
 
 test("the emitted bundle is a standalone self-registering factory", async () => {
@@ -113,16 +113,35 @@ test("a missing React in the module table fails loudly instead of silently", asy
   );
 });
 
-test("a host that injects React itself still mounts the section", async () => {
-  const { registration } = await loadBundle();
+test("a host that exposes React globally still mounts the section", async () => {
+  const { registration, sandbox } = await loadBundle();
   const React = { createElement: (name, props, ...children) => ({ children, name, props: props ?? {} }) };
   const dictionaries = [];
   const sections = [];
   const handlers = new Map();
   const exports = registration.factory(() => undefined);
-  exports.apply(createContext(React, dictionaries, sections, handlers));
+  // The factory runs in the page realm, so the global it reads is the sandbox.
+  sandbox.React = React;
+  exports.apply(createContext(undefined, dictionaries, sections, handlers));
   handlers.get("settings.section")();
   assert.equal(sections.length, 1);
+});
+
+test("apply never reads React off the Cordis context", async () => {
+  const { registration, source } = await loadBundle();
+  assert.ok(!/ctx\.React/u.test(source), "an undeclared context property throws in Cordis");
+  // A context that would throw on any unknown property must still work.
+  const React = { createElement: (name, props, ...children) => ({ children, name, props: props ?? {} }) };
+  const strictContext = new Proxy(createContext(undefined, [], [], new Map()), {
+    get(target, property) {
+      if (!(property in target) && typeof property === "string" && !property.startsWith("__")) {
+        throw new Error(`cannot get property "${String(property)}" without inject`);
+      }
+      return Reflect.get(target, property);
+    },
+  });
+  const exports = registration.factory((name) => (name === "react" ? React : undefined));
+  assert.doesNotThrow(() => exports.apply(strictContext));
 });
 
 test("the package manifest points DSH at the emitted bundle", async () => {
