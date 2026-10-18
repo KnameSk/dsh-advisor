@@ -106,26 +106,36 @@ function createController(options = {}) {
   const writes = [];
   const commands = [];
   const listeners = new Set();
+  const mutations = [];
+  // The DSH ConfigFormController snapshot: values under `value`/`base` and an
+  // explicit status; `mutate` is the write path.
   let view = {
     base: { advisorBudgetMaxCalls: -1, advisorBudgetMaxUsd: 0, advisorEnabled: true, executor: "" },
-    ns: "dsh-advisor",
     revision: 7,
+    status: "ready",
     value: { advisor: "provider/advisor-model" },
     writable: true,
   };
   const form = {
     getSnapshot: () => view,
-    refresh: async () => {},
+    mutations,
+    async mutate(ops) {
+      mutations.push(ops);
+      if (options.acceptWrite === false) return false;
+      for (const op of ops) view = { ...view, base: { ...view.base, [op.path[0]]: op.value } };
+      return true;
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
   };
+  const namespaces = options.namespaces ?? [{ ns: "dsh-advisor" }];
   const ctx = {
     get: (name) => (name.startsWith("remote.") ? ctx.remote?.[name.slice("remote.".length)] : undefined),
     configForms: {
       describe: () => ({
-        getSnapshot: () => ({ namespaces: options.namespaces ?? [view] }),
+        getSnapshot: () => ({ status: "ready", view: { namespaces } }),
         subscribe: () => () => {},
       }),
       get: () => form,
@@ -171,7 +181,7 @@ test("starting the controller loads the catalog once and reads the budget", asyn
 test("a deployment without the settings namespace reports why", async () => {
   const { controller } = createController({ namespaces: [] });
   controller.start();
-  assert.match(controller.getSnapshot().error, /does not expose the dsh-advisor settings namespace/);
+  assert.match(controller.getSnapshot().error, /does not serve a dsh-advisor settings namespace/);
 });
 
 test("the controller clamps a stored effort when the model changes", async () => {
@@ -187,34 +197,37 @@ test("the controller clamps a stored effort when the model changes", async () =>
 });
 
 test("the controller refuses an invalid draft before writing", async () => {
-  const { controller, writes } = createController();
+  const { controller, form } = createController();
   controller.start();
   await new Promise((resolve) => setImmediate(resolve));
   controller.edit("advisorLoopThreshold", 1);
   await controller.save();
-  assert.equal(writes.length, 0);
+  assert.equal(form.mutations.length, 0);
   assert.match(controller.getSnapshot().error, /at least 2/);
 });
 
 test("the controller writes only the changed fields and reports success", async () => {
-  const { controller, writes } = createController();
+  const { controller, form } = createController();
   controller.start();
   await new Promise((resolve) => setImmediate(resolve));
   controller.edit("advisorBudgetEnabled", true);
   controller.edit("advisorBudgetMaxUsd", "2.5");
   await controller.save();
-  assert.deepEqual(writes, [["dsh-advisor", { advisorBudgetEnabled: true, advisorBudgetMaxUsd: 2.5 }, 7]]);
+  assert.deepEqual(form.mutations, [[
+    { op: "set", path: ["advisorBudgetEnabled"], value: true },
+    { op: "set", path: ["advisorBudgetMaxUsd"], value: 2.5 },
+  ]]);
   assert.equal(controller.getSnapshot().message, "Advisor settings saved.");
   assert.equal(controller.getSnapshot().dirty, false);
 });
 
 test("a refused write keeps the draft for correction", async () => {
-  const { controller } = createController({ update: () => ({ ok: false, error: { message: "settings/rejected" } }) });
+  const { controller } = createController({ acceptWrite: false });
   controller.start();
   await new Promise((resolve) => setImmediate(resolve));
   controller.edit("advisor", "provider/plain-model");
   await controller.save();
-  assert.equal(controller.getSnapshot().error, "settings/rejected");
+  assert.match(controller.getSnapshot().error, /did not accept/);
   assert.equal(controller.getSnapshot().dirty, true);
 });
 

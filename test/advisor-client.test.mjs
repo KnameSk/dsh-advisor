@@ -54,19 +54,27 @@ function createRemote(handlers = {}) {
 
 function createForm(initial = {}) {
   const listeners = new Set();
+  const mutations = [];
+  // Mirrors the DSH ConfigFormController snapshot: no `ns`, values under
+  // `value`/`base`, and writes go through `mutate`.
   let view = {
     base: { advisorBudgetMaxCalls: -1, advisorBudgetMaxUsd: 0, advisorEnabled: true, executor: "" },
-    ns: "dsh-advisor",
     revision: 3,
+    status: "ready",
     value: { advisor: "provider/advisor-model", ...initial },
     writable: true,
   };
   return {
     getSnapshot: () => view,
-    refresh: async () => {},
+    mutations,
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+    async mutate(ops) {
+      mutations.push(ops);
+      for (const op of ops) view = { ...view, base: { ...view.base, [op.path[0]]: op.value } };
+      return true;
     },
     emit(next) {
       view = { ...view, ...next };
@@ -75,7 +83,8 @@ function createForm(initial = {}) {
   };
 }
 
-function createClientContext({ form = createForm(), remote, React = createFakeReact(), sections = [], dictionaries = [] } = {}) {  const handlers = new Map();
+function createClientContext({ form = createForm(), remote, React = createFakeReact(), sections = [], dictionaries = [] } = {}) {
+  const handlers = new Map();
   const locale = {
     bind: () => (key, params) => {
       const override = dictionaries.find((entry) => entry.ns === NS)?.values?.[key];
@@ -92,7 +101,7 @@ function createClientContext({ form = createForm(), remote, React = createFakeRe
     get: (name) => (name.startsWith("remote.") ? remote?.[name.slice("remote.".length)] : undefined),
     configForms: {
       describe: () => ({
-        getSnapshot: () => ({ namespaces: [form.getSnapshot()] }),
+        getSnapshot: () => ({ status: "ready", view: { namespaces: [{ ns: "dsh-advisor" }] } }),
         subscribe: () => () => {},
       }),
       get: () => form,
@@ -139,8 +148,8 @@ function renderRegistered(harness) {
   return Panel;
 }
 
-function controllerOf(tree) {
-  return treeFind(tree, (node) => node.props?.ref && typeof node.props.ref.getSnapshot === "function")[0]?.props.ref;
+function controllerOf(panel) {
+  return panel.__controller ?? panel.controller;
 }
 
 function tabLabels(tree) {
@@ -178,7 +187,7 @@ test("the panel renders every tab without crashing", async () => {
   const { calls, remote } = createRemote();
   const harness = createClientContext({ remote });
   const React = harness.React;
-  renderRegistered(harness);
+  const panel = renderRegistered(harness);
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(tabLabels(React.__tree()), ["tab.settings", "tab.budget", "tab.history", "tab.test"]);
   assert.equal(calls.modelCatalog, 1, "the model catalog is read once");
@@ -194,46 +203,52 @@ test("the panel reports a missing settings namespace instead of rendering nothin
     subscribe: () => () => {},
   });
   const React = harness.React;
-  renderRegistered(harness);
+  const panel = renderRegistered(harness);
   await new Promise((resolve) => setImmediate(resolve));
-  assert.match(treeText(React.__tree()), /does not expose the dsh-advisor settings namespace/);
+  assert.match(treeText(React.__tree()), /does not serve a dsh-advisor settings namespace/);
 });
 
 test("the panel handles a deployment with no registered models", async () => {
   const { calls, remote } = createRemote({ catalog: () => ({ ok: true, value: { groups: [], routableProviders: [] } }) });
   const harness = createClientContext({ remote });
   const React = harness.React;
-  renderRegistered(harness);
+  const panel = renderRegistered(harness);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(tabLabels(React.__tree()).length, 4, "the page still renders when no model is registered");
-  assert.equal(controllerOf(React.__tree()).getSnapshot().models.length, 0);
+  assert.equal(controllerOf(panel).getSnapshot().models.length, 0);
 });
 
 test("the panel surfaces a refused settings write", async () => {
-  const { calls, remote } = createRemote({ update: () => ({ ok: false, error: { message: "settings/rejected" } }) });
-  const harness = createClientContext({ remote });
+  const { remote } = createRemote();
+  const form = createForm();
+  form.mutate = async () => false;
+  const harness = createClientContext({ form, remote });
   const React = harness.React;
-  renderRegistered(harness);
+  const panel = renderRegistered(harness);
   await new Promise((resolve) => setImmediate(resolve));
-  const controller = controllerOf(React.__tree());
+  const controller = controllerOf(panel);
   controller.edit("advisor", "provider/other");
   await controller.save();
   const snapshot = controller.getSnapshot();
-  assert.equal(snapshot.error, "settings/rejected");
+  assert.match(snapshot.error, /did not accept/);
   assert.equal(snapshot.dirty, true, "a refused write keeps the user's draft");
 });
 
 test("saving sends only the changed fields to the settings namespace", async () => {
-  const { calls, remote } = createRemote();
-  const harness = createClientContext({ remote });
+  const { remote } = createRemote();
+  const form = createForm();
+  const harness = createClientContext({ form, remote });
   const React = harness.React;
-  renderRegistered(harness);
+  const panel = renderRegistered(harness);
   await new Promise((resolve) => setImmediate(resolve));
-  const controller = controllerOf(React.__tree());
+  const controller = controllerOf(panel);
   controller.edit("advisorBudgetEnabled", true);
   controller.edit("advisorBudgetMaxUsd", "1.25");
   await controller.save();
-  assert.deepEqual(calls.settings, [["dsh-advisor", { advisorBudgetEnabled: true, advisorBudgetMaxUsd: 1.25 }, 3]]);
+  assert.deepEqual(form.mutations, [[
+    { op: "set", path: ["advisorBudgetEnabled"], value: true },
+    { op: "set", path: ["advisorBudgetMaxUsd"], value: 1.25 },
+  ]]);
   assert.equal(controller.getSnapshot().message, "Advisor settings saved.");
 });
 
@@ -241,9 +256,9 @@ test("changing the Advisor model drops an effort the new model does not offer", 
   const { calls, remote } = createRemote();
   const harness = createClientContext({ remote });
   const React = harness.React;
-  renderRegistered(harness);
+  const panel = renderRegistered(harness);
   await new Promise((resolve) => setImmediate(resolve));
-  const controller = controllerOf(React.__tree());
+  const controller = controllerOf(panel);
   controller.edit("advisorEffort", "max");
   assert.equal(controller.get("advisorEffort"), "");
   controller.edit("advisorEffort", "low");
@@ -251,15 +266,16 @@ test("changing the Advisor model drops an effort the new model does not offer", 
 });
 
 test("the panel rejects invalid numeric input before writing", async () => {
-  const { calls, remote } = createRemote();
-  const harness = createClientContext({ remote });
+  const { remote } = createRemote();
+  const form = createForm();
+  const harness = createClientContext({ form, remote });
   const React = harness.React;
-  renderRegistered(harness);
+  const panel = renderRegistered(harness);
   await new Promise((resolve) => setImmediate(resolve));
-  const controller = controllerOf(React.__tree());
+  const controller = controllerOf(panel);
   controller.edit("contextMaxChars", "-5");
   await controller.save();
-  assert.equal(calls.settings.length, 0);
+  assert.equal(form.mutations.length, 0);
   assert.match(controller.getSnapshot().error, /whole number/);
 });
 
@@ -281,9 +297,9 @@ test("the connection test reads its structured payload", async () => {
   });
   const harness = createClientContext({ remote });
   const React = harness.React;
-  renderRegistered(harness);
+  const panel = renderRegistered(harness);
   await new Promise((resolve) => setImmediate(resolve));
-  const controller = controllerOf(React.__tree());
+  const controller = controllerOf(panel);
   await controller.testConnection();
   assert.equal(controller.getSnapshot().testResult.ok, true);
   assert.equal(controller.getSnapshot().testResult.elapsedMs, 34);

@@ -79,7 +79,6 @@ export class AdvisorPanelController {
     this.snapshot = { ...this.snapshot, ...patch };
     for (const listener of this.listeners) listener();
   }
-
   start() {
     if (this.started) return () => {};
     this.started = true;
@@ -106,40 +105,44 @@ export class AdvisorPanelController {
 
   /** Bind the form for the Advisor settings namespace as soon as the Host serves it. */
   syncNamespace() {
-    const namespaces = this.ctx.configForms.describe().getSnapshot()?.namespaces ?? [];
+    const describe = this.ctx.configForms.describe().getSnapshot();
+    // The shared mirror wraps the document: `{ status, view: { namespaces } }`.
+    const namespaces = describe?.view?.namespaces ?? describe?.namespaces ?? [];
     const view = resolveNamespace(namespaces, DEFAULT_NS);
     if (!view) {
       if (!this.snapshot.namespace) {
+        const served = namespaces.map((entry) => entry?.ns).filter(Boolean).slice(0, 12);
         this.set({
-          error: "This deployment does not expose the dsh-advisor settings namespace. Confirm the plugin is enabled in the profile.",
+          error: served.length
+            ? `This deployment does not serve a dsh-advisor settings namespace. Served: ${served.join(", ")}.`
+            : "This deployment does not serve a dsh-advisor settings namespace yet. Confirm the plugin is enabled in the profile and reopen Settings.",
           loading: false,
-          namespaceCandidates: namespaces.map((entry) => entry.ns),
+          namespaceCandidates: served,
         });
       }
       return;
     }
-    if (this.form && view.ns === this.snapshot.namespace && view.revision === this.formRevision) return;
+    if (this.form && view.ns === this.snapshot.namespace) return;
     this.formUnwatch?.();
     this.form = this.ctx.configForms.get(view.ns);
-    this.formRevision = view.revision;
+    this.formNamespace = view.ns;
     this.formUnwatch = this.form.subscribe((state) => this.acceptView(state));
-    this.acceptView(this.form.getSnapshot?.() ?? this.form.snapshot);
+    this.acceptView(this.form.getSnapshot());
   }
 
   acceptView(state) {
     if (!state) return;
-    const view = state.view ?? state;
-    const values = valuesFrom(view);
-    const dirty = this.snapshot.dirty === true;
-    const draft = dirty ? this.snapshot.draft : values;
+    const values = valuesFrom(state);
+    const draft = this.snapshot.dirty === true ? this.snapshot.draft : values;
     this.set({
-      config: view.value ?? {},
+      config: state.value ?? {},
       draft,
       error: null,
       initial: values,
-      loading: false,
-      namespace: view.ns,
-      writable: view.writable !== false,
+      loading: state.status === "loading",
+      namespace: this.formNamespace ?? this.snapshot.namespace,
+      revision: state.revision,
+      writable: state.writable !== false,
     });
   }
 
@@ -193,12 +196,13 @@ export class AdvisorPanelController {
     }
     this.set({ error: null, message: null, saving: true });
     try {
-      const settingsApi = remoteApi(this.ctx, "remote.settings");
-      if (!settingsApi?.update) throw new Error("This deployment does not expose the settings Remote, so Advisor settings cannot be saved from here.");
-      const response = await settingsApi.update(String(this.snapshot.namespace), patch, this.formRevision);
-      if (response?.ok === false) throw new Error(response.error?.message ?? "The settings write was refused.");
+      if (typeof this.form.mutate !== "function") {
+        throw new Error("This deployment does not expose an editable Advisor configuration form.");
+      }
+      const ops = Object.entries(patch).map(([key, value]) => ({ op: "set", path: [key], value }));
+      const accepted = await this.form.mutate(ops);
+      if (!accepted) throw new Error("The Harness did not accept these values. Reload the page and try again.");
       this.set({ dirty: false, message: "Advisor settings saved.", saving: false });
-      await this.form.refresh?.();
     } catch (error) {
       this.set({ error: error instanceof Error ? error.message : String(error), saving: false });
     }

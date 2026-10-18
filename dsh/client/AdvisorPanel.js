@@ -14,17 +14,18 @@ function tag(name, props, ...children) {
 
 export function createPanel(React, t, ctx) {
   const h = React.createElement;
-  const { useEffect, useMemo, useRef, useSyncExternalStore } = React;
+  const { useEffect, useRef, useState } = React;
   const controller = new AdvisorPanelController(ctx);
 
   const element = (name, props, ...children) => h(name, props ?? {}, ...children.flat().filter((child) => child !== false && child !== null && child !== undefined));
 
   function useController(controller) {
-    return useSyncExternalStore(
-      (listener) => controller.subscribe(listener),
-      () => controller.getSnapshot(),
-      () => controller.getSnapshot(),
-    );
+    // A plain state subscription keeps updates in the normal lane: a snapshot that
+    // drifts between reads becomes a render-phase update under
+    // useSyncExternalStore, which React aborts as "Too many re-renders" (#290).
+    const [snapshot, setSnapshot] = useState(() => controller.getSnapshot());
+    useEffect(() => controller.subscribe(() => setSnapshot(controller.getSnapshot())), []);
+    return snapshot;
   }
 
   function formatMicro(micro) {
@@ -134,8 +135,8 @@ export function createPanel(React, t, ctx) {
 
   function EffortSelect(props) {
     const rows = props.rows ?? [];
-    const efforts = props.ref ? effortsFor(rows, props.ref) : [];
-    if (!props.ref) return element("div", { className: "dsha-hint" }, t("model.pickFirst"));
+    const efforts = props.modelRef ? effortsFor(rows, props.modelRef) : [];
+    if (!props.modelRef) return element("div", { className: "dsha-hint" }, t("model.pickFirst"));
     if (!efforts.length) return element("div", { className: "dsha-hint" }, t("model.noEfforts"));
     return element("select", {
       className: "dsha-select",
@@ -181,7 +182,7 @@ export function createPanel(React, t, ctx) {
     }
     if (field.kind === "effort") {
       return element(FieldRow, { ...common, key },
-        element(EffortSelect, { onChange, ref: key === "executorEffort" ? snapshot.draft?.executor : snapshot.draft?.advisor, rows: snapshot.models, value }));
+        element(EffortSelect, { modelRef: key === "executorEffort" ? snapshot.draft?.executor : snapshot.draft?.advisor, onChange, rows: snapshot.models, value }));
     }
     if (field.kind === "choice") {
       return element(FieldRow, { ...common, key }, element(Choice, { onChange, options: field.options, value }));
@@ -337,8 +338,7 @@ export function createPanel(React, t, ctx) {
   function AdvisorPanel() {
     const snapshot = useController(controller);
     useEffect(() => controller.start(), []);
-    const styleRef = useRef(null);
-    useEffect(() => {
+    const styleRef = useRef(null);    useEffect(() => {
       // A non-browser renderer (tests, SSR) simply skips the stylesheet.
       if (typeof document === "undefined") return undefined;
       if (styleRef.current) styleRef.current.remove();
@@ -352,7 +352,6 @@ export function createPanel(React, t, ctx) {
     }, []);
     const tab = snapshot.tab ?? "settings";
     return element("div", { className: "dsha-root" },
-      element("div", { "data-advisor-controller": "1", ref: controller, style: { display: "none" } }),
       element("div", { className: "dsha-header" },
         element("div", null,
           element("div", { className: "dsha-title" }, t("title")),
@@ -375,6 +374,9 @@ export function createPanel(React, t, ctx) {
                 : element(TestTab, { controller, snapshot }))));
   }
 
+  // Tests reach the same controller instance the page renders with; the tree
+  // itself carries no ref, because a non-ref object is invalid on a DOM node.
+  AdvisorPanel.controller = controller;
   return AdvisorPanel;
 }
 

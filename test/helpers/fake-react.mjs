@@ -40,6 +40,21 @@ export function createFakeReact() {
       }
       return record.value;
     },
+    useState(initial) {
+      const frame = React.__current;
+      const record = React.__hook({ kind: "state" });
+      if (!record.initialized) {
+        record.value = typeof initial === "function" ? initial() : initial;
+        record.set = (next) => {
+          const value = typeof next === "function" ? next(record.value) : next;
+          if (Object.is(value, record.value)) return;
+          record.value = value;
+          React.__schedule(frame);
+        };
+        record.initialized = true;
+      }
+      return [record.value, record.set];
+    },
     useSyncExternalStore(subscribe, getSnapshot) {
       const record = React.__hook({ deps: [], kind: "store" });
       if (!record.initialized) {
